@@ -58,6 +58,12 @@
     </section>
 
     <section>
+      <h2>通知</h2>
+      <label class="row"><span>回复上下文<small>通知里别人回复你时,显示被回复的是哪条推文</small></span><span class="sw"><input type="checkbox" data-key="notifContext"><i></i></span></label>
+      <label class="row"><span>允许联网补取<small>本地没有那条推文时,点"加载上下文"才发一次请求(用你自己的登录态)</small></span><span class="sw"><input type="checkbox" data-key="contextFetch"><i></i></span></label>
+    </section>
+
+    <section>
       <h2>列表</h2>
       <label class="row"><span>淡化疑似互粉号和低活跃号<small>仅在关注 / 粉丝列表,鼠标移上去恢复</small></span><span class="sw"><input type="checkbox" data-key="dimLowQuality"><i></i></span></label>
     </section>
@@ -68,6 +74,10 @@
       <div class="row">
         <span>已记录 <b id="histCount">0</b> 个账号</span>
         <button id="clearHist" type="button">清除记录</button>
+      </div>
+      <div class="row">
+        <span>已索引 <b id="ctxCount">0</b> 条推文<small>通知里还原"被回复的是哪条"用</small></span>
+        <button id="clearCtx" type="button">清除索引</button>
       </div>
     </section>
 

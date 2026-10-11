@@ -6,7 +6,7 @@
 粉丝透镜 Follower Lens
 
 **摘要(Summary,≤132 字符)**
-在 X(Twitter)信息流和关注列表里直接显示粉丝数,并给出互关、大V、互动率等质量标签。
+在 X(Twitter)信息流、关注列表里直接显示粉丝数并给出互关/大V等标签,通知页还原被回复的那条推文。
 
 **类别(Category)**:工具 / Tools(或"社交与通讯")
 
@@ -24,17 +24,19 @@ X 不直接显示别人的粉丝数。看到一个陌生账号,想知道它值�
 • 悬停详情卡:精确粉丝数、关注数、粉丝/关注比、推文数、注册时间、互动率
 • 粉丝数变化:在你的浏览器本地记录你刷到过的账号,显示"近 7 天涨了多少"
 • 列表淡化:在关注 / 粉丝列表里,把疑似互粉号和低活跃号淡化,更快找到值得关注的人
+• 通知回复上下文:通知页里别人回复你时,在回复上方贴出被回复的那条推文,标出哪句是你说的,还能一路往上串
 • 自适应布局:推文头部太挤时,徽标自动换到下一行,不会把名字挤坏
 • 设置面板:每个功能、每种标签都能单独开关,改动即时生效
 
 【适合谁】
-想通过别人的"正在关注"列表找新账号的人;想知道哪些有影响力的人关注了自己的人;想快速判断陌生账号质量的人。
+想通过别人的"正在关注"列表找新账号的人;想知道哪些有影响力的人关注了自己的人;想快速判断陌生账号质量的人;通知里回复太多、看不出在回哪句话的人。
 
 【隐私】
 • 不收集、不上传、不出售任何数据,没有统计和广告代码
-• 只读取 X 网页自己已经收到的数据,不主动发出任何网络请求
-• 设置和粉丝数历史只保存在你浏览器本地,可随时在设置面板里清除
-• 开源:https://github.com/yaohongan/x-follower-lens
+• 默认不主动发出任何网络请求,只读取 X 网页自己已经收到的数据
+• 唯一例外:通知页的「加载上下文」按钮,只有你点它,才会用页面当前的登录态向 X 请求那一条推文(仅此一条,不批量、不定时);可在设置里关掉
+• 设置、粉丝数历史和推文索引只保存在你浏览器本地,可随时在设置面板里清除
+• 开源:https://github.com/zackzhangkai/x-follower-lens
 
 【说明】
 标签是辅助参考,粉丝数多少不代表内容质量。本扩展是个人开发的非官方工具,与 X Corp. 无关。X 改版后可能需要更新。
@@ -52,14 +54,16 @@ FEATURES
 • Hover card: exact followers, following, follower/following ratio, post count, account age, engagement rate
 • Follower change: recorded locally for accounts you browse, shows the last 7 days
 • Dim low-quality accounts in following / follower lists
+• Reply context on the notifications page: shows the tweet a reply was answering, marks your own words, and lets you walk up the thread
 • Adaptive layout: when the tweet header is crowded, the badge moves to its own line
 • Settings popup: every feature and tag can be toggled, applied instantly
 
 PRIVACY
 • Collects, uploads and sells nothing. No analytics, ads or trackers.
-• Reads only data the X web page has already received; makes no network requests of its own.
-• Settings and follower history stay in your browser and can be cleared at any time.
-• Open source: https://github.com/yaohongan/x-follower-lens
+• By default it makes no network requests of its own; it reads only data the X web page has already received.
+• One exception: the "Load context" button on the notifications page. Only when you click it does the extension request that single tweet from X, reusing the page's existing session. No bulk or background fetching; can be turned off in settings.
+• Settings, follower history and the tweet index stay in your browser and can be cleared at any time.
+• Open source: https://github.com/zackzhangkai/x-follower-lens
 
 Tags are only hints; follower count does not equal content quality. This is an unofficial personal project, not affiliated with X Corp.
 ```
@@ -68,7 +72,9 @@ Tags are only hints; follower count does not equal content quality. This is an u
 **截图**:`store/screenshot-1.png` … `screenshot-4.png`(1280×800)
 **小宣传图(Small promo tile)**:`store/promo-440x280.png`(建议上传)
 
-**主页 URL / 支持 URL**:https://github.com/yaohongan/x-follower-lens  /  https://github.com/yaohongan/x-follower-lens/issues
+> ⚠️ 现有截图是 0.2.x 时期拍的,其中 `screenshot-4.png` 的设置面板**还没有"通知"这一组开关**,也没有"通知里的回复上下文"那一屏;提交前需要重拍,否则与商店文案不一致。
+
+**主页 URL / 支持 URL**:https://github.com/zackzhangkai/x-follower-lens  /  https://github.com/zackzhangkai/x-follower-lens/issues
 
 ---
 
@@ -83,22 +89,23 @@ Tags are only hints; follower count does not equal content quality. This is an u
 
 | 项目 | 理由(粘贴) |
 |---|---|
-| storage | 保存用户的设置(各开关、徽标位置)以及用户本地的粉丝数历史记录,用于显示"近 7 天变化"。数据只保存在本地,不上传。 |
-| 内容脚本(x.com、twitter.com) | 扩展只在 x.com 和 twitter.com 运行。它读取 X 网页自己已经收到的数据(用户名、粉丝数、关注数、注册时间、互动数),并在页面上显示徽标。不读取任何其它网站。 |
+| storage | 保存用户的设置(各开关、徽标位置)、本地粉丝数历史记录(用于显示"近 7 天变化")和本地推文索引(用于通知页显示回复上下文)。数据只保存在本地,不上传。 |
+| 内容脚本(x.com、twitter.com) | 扩展只在 x.com 和 twitter.com 运行。它读取 X 网页自己已经收到的数据(用户名、粉丝数、关注数、注册时间、互动数、推文正文与回复关系),并在页面上显示徽标、悬停卡和回复上下文。不读取任何其它网站。 |
 
 > 本扩展没有声明 `host_permissions`、`tabs`、`webRequest` 等权限,所以不需要为它们写理由。
+> 通知页的「加载上下文」按钮向 x.com 自己的接口取一条推文,用的是页面已有的同源会话,复用的也是同一个内容脚本的权限范围,没有新增权限。
 
 **远程代码(Remote code)**:选 **No**,不使用远程托管代码。所有 JS 都在安装包里。
 
 **数据使用披露(Data usage)**
 - 你收集或使用下列任何用户数据吗? → 保守且准确的回答:
-  - "网站内容(Website content)":扩展会读取页面上的公开账号数据,但只在本地使用、不传输、不存储在外部。商店表单对"收集"的定义是**传输出设备**,所以按"不收集"勾选;若表单让你勾选"处理"类别,选"网站内容"并说明仅本地使用。
+  - "网站内容(Website content)":扩展会读取页面上的公开账号数据、推文正文与回复关系,但只在本地使用、不传输、不存储在外部。商店表单对"收集"的定义是**传输出设备**,所以按"不收集"勾选;若表单让你勾选"处理"类别,选"网站内容"并说明仅本地使用。
   - 其它类别(个人身份信息、健康、金融、认证信息、位置、网页历史、用户活动等):全部**不勾选**。
 - 三项承诺(Certifications)全部勾选:不向第三方出售用户数据;不将数据用于与单一用途无关的目的;不用于判定信用或贷款。
 
 **隐私政策 URL**
 ```
-https://github.com/yaohongan/x-follower-lens/blob/main/PRIVACY.md
+https://github.com/zackzhangkai/x-follower-lens/blob/main/PRIVACY.md
 ```
 (推送到 GitHub 之后这个链接才有效。)
 
@@ -112,6 +119,7 @@ https://github.com/yaohongan/x-follower-lens/blob/main/PRIVACY.md
 ---
 
 ## 四、审核可能被问到的点
-1. **为什么要改写页面的 fetch / XMLHttpRequest?** 答:只是在响应返回后,复制一份读取页面已收到的数据,不修改请求,不修改响应,不发出新请求。代码见 `inject.js`(约 30 行)。
-2. **名称里有 X / Twitter?** 名称是"粉丝透镜 Follower Lens",没有使用 X 的名称或 Logo;描述里提到 X 仅为说明适用站点,并已声明与 X Corp. 无关。
-3. **被 X 改版弄坏怎么办?** 字段解析集中在 `parse.js`,改版后更新版本即可。
+1. **为什么要改写页面的 fetch / XMLHttpRequest?** 答:只是在响应返回后,复制一份读取页面已收到的数据,不修改请求,不修改响应,不发出新请求。代码见 `inject.js`。
+2. **扩展会不会自己发请求?** 答:默认不会。唯一的例外是通知页的「加载上下文」按钮,由用户点击才触发,只取被回复的那一条推文,复用页面已有的登录会话,不批量、不定时、不在后台运行;设置里可以关掉("允许联网补取")。这一点在 README、隐私政策和商店文案里写法一致。
+3. **名称里有 X / Twitter?** 名称是"粉丝透镜 Follower Lens",没有使用 X 的名称或 Logo;描述里提到 X 仅为说明适用站点,并已声明与 X Corp. 无关。
+4. **被 X 改版弄坏怎么办?** 字段解析集中在 `parse.js`,页面插入位置集中在 `content.js`,补取用的 queryId 不硬编码(从 X 自己的请求里读),改版后更新版本即可。

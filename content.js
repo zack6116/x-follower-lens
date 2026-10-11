@@ -2,9 +2,16 @@
   const P = window.FollowerLensParse;
   const SETTINGS_KEY = "fl_settings";
   const HIST_KEY = "fl_hist";
+  const CTX_KEY = "fl_ctx";
   const HIST_MAX_USERS = 3000;
   const HIST_MAX_POINTS = 40;
   const HIST_MIN_GAP = 6 * 3600e3;
+  const CTX_MAX = 800;          // 本地索引最多留多少条推文
+  const CTX_TEXT_MAX = 400;     // 单条正文存多少字
+  const CTX_SHOW_MAX = 160;     // 引用块里显示多少字
+  const REQ_SOURCE = "follower-lens-req";
+  const RES_SOURCE = "follower-lens-res";
+  const FETCH_TIMEOUT = 12000;
 
   const users = new Map();      // handle -> user
   const tweetSeen = new Set();  // 去重,避免同一条推文重复累计
@@ -13,6 +20,13 @@
   let settingsVer = 0;
   let hist = {};
   let histDirty = false;
+  let ctxIndex = new Map();     // 推文 id -> 上下文记录(用于还原"被回复的是哪条")
+  let ctxDirty = false;
+  const fetchState = new Map(); // 通知里那条推文 id -> "loading" | { error }
+  const waiters = new Map();    // 补取请求序号 -> resolve
+  let reqSeq = 0;
+  let meUid = null;             // 本人 rest_id(接口里拿)
+  let meHandleCache = null;     // 本人 @handle(页面里拿)
   let msgCount = 0;
   const pending = [];           // 设置读完之前收到的数据包
 
@@ -21,15 +35,17 @@
 
   function init() {
     if (!storage) { settings = P.mergeSettings(); flush(); return; }
-    storage.get([SETTINGS_KEY, HIST_KEY], (res) => {
+    storage.get([SETTINGS_KEY, HIST_KEY, CTX_KEY], (res) => {
       settings = P.mergeSettings(res && res[SETTINGS_KEY]);
       hist = (res && res[HIST_KEY]) || {};
+      ctxIndex = new Map(Object.entries((res && res[CTX_KEY]) || {}));
       applyDebug();
       flush();
     });
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (changes[HIST_KEY] && changes[HIST_KEY].newValue === undefined) hist = {};  // 弹窗里清除了记录
+      if (changes[CTX_KEY] && changes[CTX_KEY].newValue === undefined) ctxIndex = new Map();
       if (!changes[SETTINGS_KEY]) return;
       settings = P.mergeSettings(changes[SETTINGS_KEY].newValue);
       settingsVer++;
@@ -53,43 +69,77 @@
     histDirty = true;
   }
 
+  function trimHist() {
+    const handles = Object.keys(hist);
+    if (handles.length <= HIST_MAX_USERS) return;
+    handles
+      .sort((a, b) => hist[a][hist[a].length - 1][0] - hist[b][hist[b].length - 1][0])
+      .slice(0, handles.length - HIST_MAX_USERS)
+      .forEach((h) => delete hist[h]);
+  }
+
+  function trimCtx() {
+    if (ctxIndex.size <= CTX_MAX) return;
+    // 优先丢最老的推文;时间取不到的当最新,尽量留着
+    const ids = [...ctxIndex.keys()].sort(
+      (a, b) => (ctxIndex.get(a).createdAt || Infinity) - (ctxIndex.get(b).createdAt || Infinity)
+    );
+    ids.slice(0, ids.length - CTX_MAX).forEach((id) => ctxIndex.delete(id));
+  }
+
   let saveTimer = null;
   function scheduleSave() {
     if (!storage || saveTimer) return;
     saveTimer = setTimeout(() => {
       saveTimer = null;
-      if (!histDirty) return;
-      histDirty = false;
-      const handles = Object.keys(hist);
-      if (handles.length > HIST_MAX_USERS) {
-        handles
-          .sort((a, b) => hist[a][hist[a].length - 1][0] - hist[b][hist[b].length - 1][0])
-          .slice(0, handles.length - HIST_MAX_USERS)
-          .forEach((h) => delete hist[h]);
+      const patch = {};
+      if (histDirty) { histDirty = false; trimHist(); patch[HIST_KEY] = hist; }
+      if (ctxDirty) {
+        ctxDirty = false;
+        trimCtx();
+        patch[CTX_KEY] = Object.fromEntries(ctxIndex);
       }
-      try { storage.set({ [HIST_KEY]: hist }); } catch (_) {}
+      if (!Object.keys(patch).length) return;
+      try { storage.set(patch); } catch (_) {}
     }, 3000);
   }
 
   // ---------- 数据包处理 ----------
   window.addEventListener("message", (e) => {
-    if (e.source !== window || !e.data || e.data.source !== "follower-lens") return;
+    if (e.source !== window || !e.data) return;
+    // 补取请求的回包
+    if (e.data.source === RES_SOURCE) {
+      const w = waiters.get(e.data.id);
+      if (!w) return;
+      waiters.delete(e.data.id);
+      w(e.data);
+      return;
+    }
+    if (e.data.source !== "follower-lens") return;
     msgCount++;
     if (!settings) { pending.push(e.data.body); return; }
     handleMessage(e.data.body);
     scheduleRender();
   });
 
-  function handleMessage(body) {
-    let json;
-    try { json = JSON.parse(body); } catch (_) { return; }
-    const { users: us, tweets } = P.extract(json);
+  // 同一条推文可能来自多个响应,正文更全的那份留下
+  function mergeCtx(list) {
+    for (const c of list) {
+      const old = ctxIndex.get(c.id);
+      if (old && old.text.length >= c.text.length) continue;
+      ctxIndex.set(c.id, c.text.length > CTX_TEXT_MAX ? Object.assign({}, c, { text: c.text.slice(0, CTX_TEXT_MAX) }) : c);
+      ctxDirty = true;
+    }
+  }
+
+  function ingest(json) {
+    const res = P.extract(json);
     const now = Date.now();
-    for (const u of us) {
+    for (const u of res.users) {
       users.set(u.handle, u);
       recordHistory(u, now);
     }
-    for (const t of tweets) {
+    for (const t of res.tweets) {
       if (tweetSeen.has(t.id)) continue;
       tweetSeen.add(t.id);
       const s = stats.get(t.author) || { views: 0, interactions: 0 };
@@ -97,7 +147,16 @@
       s.interactions += t.interactions;
       stats.set(t.author, s);
     }
-    if (histDirty) scheduleSave();
+    if (res.me) meUid = res.me;
+    mergeCtx(res.ctx);
+    if (histDirty || ctxDirty) scheduleSave();
+    return res;
+  }
+
+  function handleMessage(body) {
+    let json;
+    try { json = JSON.parse(body); } catch (_) { return; }
+    ingest(json);
   }
 
   // ---------- 渲染 ----------
@@ -227,6 +286,7 @@
     document.querySelectorAll(".fl-line").forEach((l) => l.remove());
     document.querySelectorAll(".fl-badge").forEach((b) => b.remove());
     document.querySelectorAll(".fl-dim").forEach((c) => c.classList.remove("fl-dim"));
+    document.querySelectorAll(".fl-ctx").forEach((n) => n.remove());
   }
 
   function render() {
@@ -237,6 +297,7 @@
       const nameBlock = cell.querySelector('[dir="ltr"]')?.closest("div");
       decorateCell(cell, nameBlock && nameBlock.parentElement);
     });
+    renderContexts();
     updateHud();
   }
 
@@ -250,6 +311,175 @@
     childList: true,
     subtree: true,
   });
+
+  // ---------- 通知页:补出"被回复的是哪条" ----------
+  // X 的回复通知只写一句"回复 @你",不显示被回复的正文。这里把本地索引里
+  // 那条推文(正文 + 作者 + 时间)贴在回复正文上方,让上下文连起来。
+  const isNotifPage = () => location.pathname === "/notifications";
+  const ctxUrl = (handle, id) => `https://x.com/${handle || "i"}/status/${id}`;
+
+  function themeOf() {
+    const m = getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [255, 255, 255];
+    return (+m[0] * 299 + +m[1] * 587 + +m[2] * 114) / 1000 < 128 ? "dark" : "light";
+  }
+
+  function myHandle() {
+    if (meHandleCache) return meHandleCache;
+    const btn = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+    const m = btn && btn.textContent.match(/@([A-Za-z0-9_]{1,15})/);
+    if (m) meHandleCache = m[1].toLowerCase();
+    return meHandleCache;
+  }
+
+  const isMine = (c) => P.isMine(c, { uid: meUid, handle: myHandle() });
+
+  function mk(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  // 新标签页打开,不动你正在看的通知列表
+  function linkEl(href, text, cls) {
+    const a = mk("a", cls || "fl-ctx-link", text);
+    a.href = href;
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(href, "_blank", "noopener");
+    });
+    return a;
+  }
+
+  function tweetIdOf(article) {
+    const a = article.querySelector('a[href*="/status/"]');
+    const m = a && a.getAttribute("href").match(/\/status\/(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  function buildContextBlock(self) {
+    const chain = P.resolveChain(self.id, ctxIndex, 2);
+    const parent = chain[0] || null;
+    const state = fetchState.get(self.id);
+    const now = Date.now();
+
+    const wrap = mk("div", "fl-ctx");
+    wrap.dataset.flTheme = themeOf();
+    // 整张通知卡是可点的,别让我们这块触发跳转
+    wrap.addEventListener("click", (e) => {
+      if (e.target.closest("a, button")) return;
+      e.stopPropagation();
+    });
+
+    const head = mk("div", "fl-ctx-h");
+    head.append(mk("span", "fl-ctx-badge", parent ? "被回复的推文" : "上下文未缓存"));
+    const whoHandle = parent ? parent.handle : self.inReplyToHandle;
+    if (whoHandle) {
+      const mine = parent ? isMine(parent) : (myHandle() === whoHandle);
+      head.append(mk("b", "fl-ctx-who", mine ? `你 @${whoHandle}` : `@${whoHandle}`));
+      if (mine) head.append(mk("span", "fl-ctx-mine", "你说的"));
+    }
+    if (parent) head.append(mk("span", "fl-ctx-time", P.fmtTime(parent.createdAt, now)));
+    wrap.append(head);
+
+    const body = mk("div", "fl-ctx-t");
+    if (parent) {
+      body.textContent = P.trimText(parent.text, CTX_SHOW_MAX) || "(这条没有正文,可能是图片或视频)";
+    } else if (state === "loading") {
+      body.textContent = "正在取…";
+    } else {
+      body.textContent = (state && state.error) || "这条被回复的推文还没经过本地索引。";
+    }
+    wrap.append(body);
+
+    if (parent && parent.inReplyTo) {
+      const up = mk("div", "fl-ctx-up");
+      up.append(mk("span", null, "↖ 这条也是回复,还有上文"));
+      if (parent.inReplyToHandle) up.append(linkEl(ctxUrl(parent.inReplyToHandle, parent.inReplyTo), "跳上去 ↗", "fl-ctx-link"));
+      wrap.append(up);
+    }
+
+    const foot = mk("div", "fl-ctx-f");
+    if (parent) {
+      foot.append(linkEl(ctxUrl(parent.handle, parent.id), "查看原帖 ↗"));
+    } else if (self.inReplyTo) {
+      foot.append(linkEl(ctxUrl(self.inReplyToHandle, self.inReplyTo), "原帖 ↗"));
+      if (settings.contextFetch) {
+        const btn = mk("button", "fl-ctx-load", state && state.error ? "重试" : "加载上下文");
+        btn.type = "button";
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fetchState.delete(self.id);
+          loadContext(self);
+        });
+        foot.append(btn);
+      }
+    }
+    if (foot.childNodes.length) wrap.append(foot);
+    return wrap;
+  }
+
+  function dropBlock(article) {
+    const old = article.querySelector(".fl-ctx");
+    if (old) old.remove();
+    delete article.dataset.flCtx;
+  }
+
+  function decorateContext(article) {
+    // 引用推文里嵌套的推文卡片不处理
+    if (article.parentElement && article.parentElement.closest('article[data-testid="tweet"]')) return;
+    const id = tweetIdOf(article);
+    const self = id ? ctxIndex.get(id) : null;
+    if (!self || !self.inReplyTo) { dropBlock(article); return; }
+
+    const state = fetchState.get(self.id);
+    const sig = [self.id, self.inReplyTo, settingsVer, ctxIndex.has(self.inReplyTo) ? "P" : "-",
+      state === "loading" ? "L" : state && state.error ? "E" : "-"].join("|");
+    if (article.dataset.flCtx === sig) return;
+    dropBlock(article);
+
+    const anchor = article.querySelector('[data-testid="tweetText"]') || article.querySelector('[role="group"]');
+    if (!anchor) return;
+    anchor.before(buildContextBlock(self));
+    article.dataset.flCtx = sig;
+  }
+
+  function renderContexts() {
+    if (!settings.notifContext || !isNotifPage()) {
+      document.querySelectorAll(".fl-ctx").forEach((n) => n.remove());
+      return;
+    }
+    document.querySelectorAll('article[data-testid="tweet"]').forEach(decorateContext);
+  }
+
+  // 用页面自己的登录态取一条推文。只有用户点了按钮才会走到这里。
+  function requestTweet(tweetId) {
+    return new Promise((resolve) => {
+      const id = ++reqSeq;
+      waiters.set(id, resolve);
+      window.postMessage({ source: REQ_SOURCE, id, tweetId: String(tweetId) }, "*");
+      setTimeout(() => {
+        if (waiters.delete(id)) resolve({ error: "请求超时" });
+      }, FETCH_TIMEOUT);
+    });
+  }
+
+  async function loadContext(self) {
+    if (!settings.contextFetch || fetchState.get(self.id) === "loading") return;
+    fetchState.set(self.id, "loading");
+    scheduleRender();
+    const res = await requestTweet(self.inReplyTo);
+    fetchState.delete(self.id);
+    if (res && res.text) {
+      try { ingest(JSON.parse(res.text)); } catch (_) {}
+    }
+    if (!ctxIndex.has(self.inReplyTo)) {
+      fetchState.set(self.id, { error: (res && res.error) || "X 没有返回这条推文" });
+    }
+    scheduleRender();
+  }
 
   // ---------- 调试条 ----------
   let hud = null;
@@ -267,7 +497,7 @@
   function updateHud() {
     if (!hud) return;
     const shown = document.querySelectorAll(".fl-badge").length;
-    const text = `FL 数据包:${msgCount} 用户:${users.size} 已显示:${shown}`;
+    const text = `FL 数据包:${msgCount} 用户:${users.size} 已显示:${shown} 上下文:${ctxIndex.size}`;
     if (hud.textContent !== text) hud.textContent = text;
   }
 
@@ -323,8 +553,7 @@
       document.documentElement.append(tip);
     }
     tip.innerHTML = tipHtml(handle);
-    const m = getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [255, 255, 255];
-    tip.dataset.theme = (+m[0] * 299 + +m[1] * 587 + +m[2] * 114) / 1000 < 128 ? "dark" : "light";
+    tip.dataset.theme = themeOf();
     tip.style.display = "block";
     const r = badge.getBoundingClientRect();
     const tw = tip.offsetWidth, th = tip.offsetHeight;

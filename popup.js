@@ -1,9 +1,11 @@
 (() => {
   const KEY = "fl_settings";
   const HIST_KEY = "fl_hist";
+  const CTX_KEY = "fl_ctx";
   const DEFAULTS = {
     enabled: true, showRatio: false, tierColors: true, hoverCard: true,
     trackHistory: true, dimLowQuality: true, layout: "auto", maxTags: 3, debug: false,
+    notifContext: true, contextFetch: true,
     tags: { relation: true, bigV: true, farm: true, newAcct: true, oldAcct: true, engaged: true, lowActive: true },
   };
   let settings = null;
@@ -21,8 +23,9 @@
   }
 
   function countHist() {
-    chrome.storage.local.get(HIST_KEY, (r) => {
+    chrome.storage.local.get([HIST_KEY, CTX_KEY], (r) => {
       document.getElementById("histCount").textContent = Object.keys(r[HIST_KEY] || {}).length;
+      document.getElementById("ctxCount").textContent = Object.keys(r[CTX_KEY] || {}).length;
     });
   }
 
@@ -45,5 +48,9 @@
 
   document.getElementById("clearHist").addEventListener("click", () => {
     chrome.storage.local.remove(HIST_KEY, countHist);
+  });
+
+  document.getElementById("clearCtx").addEventListener("click", () => {
+    chrome.storage.local.remove(CTX_KEY, countHist);
   });
 })();

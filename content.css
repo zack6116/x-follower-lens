@@ -74,6 +74,55 @@
 #fl-tip .up { color: rgb(0, 160, 108); }
 #fl-tip .down { color: rgb(226, 22, 116); }
 
+/* 通知页:被回复的推文 */
+.fl-ctx {
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(113, 118, 123, 0.35);
+  border-left: 3px solid rgba(29, 155, 240, 0.55);
+  background: rgba(113, 118, 123, 0.07);
+  font: 13px/1.45 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  cursor: default;
+}
+.fl-ctx[data-theme="dark"] { background: rgba(255, 255, 255, 0.04); }
+.fl-ctx-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+.fl-ctx-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(29, 155, 240, 0.14);
+  color: rgb(29, 155, 240);
+  font-size: 11px;
+  font-weight: 700;
+}
+.fl-ctx-who { font-weight: 700; }
+.fl-ctx-mine {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(120, 86, 255, 0.15);
+  color: rgb(120, 86, 255);
+  font-size: 11px;
+}
+.fl-ctx-time { color: rgb(113, 118, 123); font-size: 12px; }
+.fl-ctx-t { white-space: pre-wrap; word-break: break-word; }
+.fl-ctx[data-theme="light"] .fl-ctx-t { color: rgb(83, 100, 113); }
+.fl-ctx[data-theme="dark"] .fl-ctx-t { color: rgb(139, 152, 165); }
+.fl-ctx-up { margin-top: 3px; color: rgb(113, 118, 123); font-size: 12px; display: flex; gap: 8px; }
+.fl-ctx-f { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.fl-ctx-link { color: rgb(29, 155, 240); font-size: 12px; text-decoration: none; cursor: pointer; }
+.fl-ctx-link:hover { text-decoration: underline; }
+.fl-ctx-load {
+  padding: 2px 10px;
+  border: 1px solid rgba(29, 155, 240, 0.5);
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(29, 155, 240);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.fl-ctx-load:hover { background: rgba(29, 155, 240, 0.12); }
+
 #fl-hud {
   position: fixed; left: 8px; bottom: 8px; z-index: 99999;
   padding: 3px 8px; font: 12px/1.4 sans-serif; color: #fff;
