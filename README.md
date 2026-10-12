@@ -149,7 +149,7 @@ node --test tests/parse.test.cjs
 ## 贡献与反馈
 
 - 问题、建议、X 改版后失效,都提到 [Issues](https://github.com/zackzhangkai/x-follower-lens/issues)。
-- **安全相关的问题**(比如怀疑扩展可能泄露数据)请不要开公开 Issue,直接私信 [@kaiz_amm](https://x.com/kaiz_amm)。
+- **安全相关的问题**(比如怀疑扩展可能泄露数据)请不要开公开 Issue,直接私信 [@zack6116](https://x.com/zack6116)。
 - 本项目 fork 自 [yaohongan/x-follower-lens](https://github.com/yaohongan/x-follower-lens),以 [MIT 协议](LICENSE) 开源。
 
 ## 后续计划
